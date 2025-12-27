@@ -1,0 +1,56 @@
+name: Ocean TIDES Tracker
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  update-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch Stats
+        run: |
+          # Create data folder if missing
+          mkdir -p data
+          
+          # Fetch API Data
+          DATA=$(curl -s https://ocean.xyz/api/pool/stats)
+          HASHRATE=$(echo $DATA | jq '.hashrate')
+          DIFF=$(echo $DATA | jq '.network_difficulty')
+          WINDOW=$(echo $DATA | jq '.share_log_window')
+          TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          
+          # Initialize CSV if it doesn't exist
+          if [ ! -f data/history.csv ]; then
+            echo "timestamp,hashrate,difficulty,window_target" > data/history.csv
+          fi
+          
+          # Append data
+          echo "$TIME,$HASHRATE,$DIFF,$WINDOW" >> data/history.csv
+
+      - name: Commit Data
+        run: |
+          git config --global user.name "OceanBot"
+          git config --global user.email "bot@ocean.xyz"
+          git add data/history.csv
+          git commit -m "Update stats" || echo "No changes to commit"
+          git push
+
+      - name: Upload Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
