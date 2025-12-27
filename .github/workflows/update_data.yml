@@ -19,27 +19,25 @@ jobs:
       - name: Fetch Stats
         run: |
           mkdir -p data
-          # Fetch from the correct stats endpoint
+          # Fetch from Ocean's public stats API
           RESPONSE=$(curl -s -H "Accept: application/json" https://ocean.xyz/api/stats)
           
-          # Validate that we actually got JSON (Check if it starts with { )
-          if [[ $(echo "$RESPONSE" | head -c 1) != "{" ]]; then
-            echo "Error: API did not return JSON. Response was: $RESPONSE"
+          # Check if the response is valid JSON
+          if ! echo "$RESPONSE" | jq empty > /dev/null 2>&1; then
+            echo "Error: API returned invalid data. Response was: $RESPONSE"
             exit 1
           fi
 
-          # Extract values safely
+          # Parse values safely
           HASHRATE=$(echo "$RESPONSE" | jq -r '.hashrate // 0')
           DIFF=$(echo "$RESPONSE" | jq -r '.network_difficulty // 0')
           WINDOW=$(echo "$RESPONSE" | jq -r '.share_log_window // 0')
           TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           
-          # Initialize CSV if missing
           if [ ! -f data/history.csv ]; then
             echo "timestamp,hashrate,difficulty,window_target" > data/history.csv
           fi
           
-          # Append data only if hashrate is valid
           if [ "$HASHRATE" != "0" ]; then
             echo "$TIME,$HASHRATE,$DIFF,$WINDOW" >> data/history.csv
           fi
@@ -49,7 +47,7 @@ jobs:
           git config --global user.name "OceanBot"
           git config --global user.email "bot@ocean.tracker"
           git add data/history.csv
-          git commit -m "📊 Update stats" || echo "No changes"
+          git commit -m "📊 Update stats" || echo "No changes to commit"
           git push
 
       - name: Setup Pages
