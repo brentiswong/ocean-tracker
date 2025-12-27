@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>OCEAN TIDES Live Tracker</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <style>
+        body { font-family: -apple-system, sans-serif; background: #0a0a0a; color: white; text-align: center; padding: 50px; }
+        .box { background: #1a1a1a; padding: 30px; border-radius: 15px; display: inline-block; border: 1px solid #333; }
+        .highlight { color: #00ffcc; font-size: 3em; font-weight: bold; margin: 10px 0; }
+        .sub { color: #888; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <div>Current TIDES Window</div>
+        <div id="window-display" class="highlight">Loading...</div>
+        <div id="stats" class="sub">Waiting for hashrate data...</div>
+    </div>
+
+    <script>
+        Papa.parse("data/history.csv", {
+            download: true,
+            header: true,
+            dynamicTyping: true,
+            complete: function(results) {
+                const data = results.data.filter(row => row.timestamp);
+                if (data.length === 0) return;
+
+                const latest = data[data.length - 1];
+                let totalWork = 0;
+                let secondsBack = 0;
+                const targetWork = latest.window_target; 
+
+                // Walk backward to sum work
+                for (let i = data.length - 1; i >= 0; i--) {
+                    totalWork += data[i].hashrate * 600; // 10 min blocks
+                    secondsBack += 600;
+                    if (totalWork >= targetWork) break;
+                }
+
+                document.getElementById('window-display').innerText = (secondsBack / 3600).toFixed(2) + " Hours";
+                document.getElementById('stats').innerText = 
+                    `Pool Hashrate: ${(latest.hashrate / 1e12).toFixed(2)} TH/s | Net Diff: ${(latest.difficulty / 1e12).toFixed(2)}T`;
+            }
+        });
+    </script>
+</body>
+</html>
