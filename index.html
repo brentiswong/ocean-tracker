@@ -2,50 +2,54 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>OCEAN TIDES Live</title>
+    <title>OCEAN TIDES Tracker</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     <style>
-        body { font-family: sans-serif; background: #050505; color: #00ffcc; text-align: center; padding: 50px; }
-        .card { background: #111; border: 1px solid #333; padding: 30px; border-radius: 12px; display: inline-block; min-width: 300px; }
-        .value { font-size: 3rem; font-weight: bold; color: #fff; margin: 15px 0; }
-        .label { color: #666; font-size: 0.8rem; text-transform: uppercase; }
+        body { font-family: -apple-system, sans-serif; background: #000; color: #00ffcc; text-align: center; padding: 40px; }
+        .card { background: #111; border: 1px solid #333; padding: 30px; border-radius: 12px; display: inline-block; }
+        .value { font-size: 3.5rem; font-weight: bold; color: #fff; margin: 10px 0; }
+        .label { color: #888; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px; }
     </style>
 </head>
 <body>
     <div class="card">
-        <div class="label">TIDES Window (moving target)</div>
+        <div class="label">Current TIDES Window</div>
         <div id="window-val" class="value">Loading...</div>
-        <div id="details" style="color: #444; font-size: 0.85rem;">Checking hashrate history...</div>
+        <div id="debug" style="color:#444; font-size: 0.8rem;">Analyzing share window...</div>
     </div>
 
     <script>
-        Papa.parse("data/history.csv", {
-            download: true,
-            header: true,
-            dynamicTyping: true,
-            complete: function(results) {
-                const rows = results.data.filter(r => r.hashrate > 0);
-                if (rows.length === 0) {
-                    document.getElementById('window-val').innerText = "No Data";
-                    return;
+        async function calculate() {
+            Papa.parse("data/history.csv", {
+                download: true,
+                header: true,
+                dynamicTyping: true,
+                complete: function(results) {
+                    const rows = results.data.filter(r => r.hashrate > 0);
+                    if (rows.length === 0) return;
+
+                    const latest = rows[rows.length - 1];
+                    const targetWork = latest.window_target; 
+                    
+                    let accumulatedWork = 0;
+                    let secondsBack = 0;
+
+                    // Walk back to see how long it takes to reach max_tides_shares
+                    for (let i = rows.length - 1; i >= 0; i--) {
+                        // Work = Hashrate * Time (10 mins = 600s)
+                        // Note: We divide hashrate by 2^32 to convert to diff-1 shares
+                        let intervalWork = (rows[i].hashrate / Math.pow(2, 32)) * 600;
+                        accumulatedWork += intervalWork;
+                        secondsBack += 600;
+                        if (accumulatedWork >= targetWork) break;
+                    }
+
+                    document.getElementById('window-val').innerText = (secondsBack / 3600).toFixed(2) + " Hours";
+                    document.getElementById('debug').innerText = `Pool Hashrate: ${(latest.hashrate / 1e18).toFixed(2)} Eh/s`;
                 }
-
-                const latest = rows[rows.length - 1];
-                let totalWork = 0;
-                let seconds = 0;
-                const target = latest.window_target; // 8 * Network Difficulty
-
-                // Calculation: Sum (Hashrate * 600s) backwards
-                for (let i = rows.length - 1; i >= 0; i--) {
-                    totalWork += rows[i].hashrate * 600;
-                    seconds += 600;
-                    if (totalWork >= target) break;
-                }
-
-                document.getElementById('window-val').innerText = (seconds / 3600).toFixed(2) + " hrs";
-                document.getElementById('details').innerText = `Pool: ${(latest.hashrate / 1e15).toFixed(2)} PH/s | Window: ${(target / 1e12).toFixed(1)}T`;
-            }
-        });
+            });
+        }
+        calculate();
     </script>
 </body>
 </html>
