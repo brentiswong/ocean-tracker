@@ -16,38 +16,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch Stats
+      - name: Fetch and Merge Data
         run: |
           mkdir -p data
-          # Fetch from Ocean's public stats API
-          RESPONSE=$(curl -s -H "Accept: application/json" https://ocean.xyz/api/stats)
           
-          # Check if the response is valid JSON
-          if ! echo "$RESPONSE" | jq empty > /dev/null 2>&1; then
-            echo "Error: API returned invalid data. Response was: $RESPONSE"
-            exit 1
-          fi
-
-          # Parse values safely
-          HASHRATE=$(echo "$RESPONSE" | jq -r '.hashrate // 0')
-          DIFF=$(echo "$RESPONSE" | jq -r '.network_difficulty // 0')
-          WINDOW=$(echo "$RESPONSE" | jq -r '.share_log_window // 0')
+          # 1. Get Pool Stats (Difficulty and Max Shares)
+          STAT_RESP=$(curl -s https://api.ocean.xyz/v1/pool_stat/)
+          DIFF=$(echo "$STAT_RESP" | jq -r '.result.network_difficulty')
+          MAX_SHARES=$(echo "$STAT_RESP" | jq -r '.result.max_tides_shares')
+          
+          # 2. Get Hashrate (5-minute average)
+          HASH_RESP=$(curl -s https://api.ocean.xyz/v1/pool_hashrate)
+          HASHRATE=$(echo "$HASH_RESP" | jq -r '.result.pool_300s')
+          
           TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          
+
+          # 3. Handle CSV
           if [ ! -f data/history.csv ]; then
             echo "timestamp,hashrate,difficulty,window_target" > data/history.csv
           fi
           
-          if [ "$HASHRATE" != "0" ]; then
-            echo "$TIME,$HASHRATE,$DIFF,$WINDOW" >> data/history.csv
-          fi
+          # Append the data
+          echo "$TIME,$HASHRATE,$DIFF,$MAX_SHARES" >> data/history.csv
 
-      - name: Commit and Push
+      - name: Commit Data
         run: |
           git config --global user.name "OceanBot"
           git config --global user.email "bot@ocean.tracker"
           git add data/history.csv
-          git commit -m "📊 Update stats" || echo "No changes to commit"
+          git commit -m "📊 Log Pool Stats" || echo "No changes"
           git push
 
       - name: Setup Pages
