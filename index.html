@@ -184,11 +184,6 @@
                 <div class="stat-value" id="peakHashrate">--</div>
                 <div class="stat-subtext">EH/s</div>
             </div>
-            <div class="stat-card">
-                <h3>Last Updated</h3>
-                <div class="stat-value" id="lastUpdated">--</div>
-                <div class="stat-subtext"></div>
-            </div>
         </div>
 
         <div class="chart-container">
@@ -201,7 +196,7 @@
         </div>
 
         <div class="footer">
-            <p>Data updates automatically. Last refresh: <span id="refreshTime">--</span></p>
+            <p>Last updated: <span id="lastUpdated">--</span> | Refreshed: <span id="refreshTime">--</span></p>
         </div>
     </div>
 
@@ -254,13 +249,49 @@
                     throw new Error('No valid data found in CSV');
                 }
 
-                updateStats(data);
-                updateChart(data);
+                // Aggregate data to 1 point per day
+                const aggregatedData = aggregateByDay(data);
+
+                updateStats(data); // Use original data for stats
+                updateChart(aggregatedData); // Use aggregated data for chart
                 updateTimestamp();
             } catch (error) {
                 showError(`Error parsing data: ${error.message}`);
                 console.error('Parse error:', error);
             }
+        }
+
+        function aggregateByDay(data) {
+            const dayMap = {};
+
+            data.forEach(entry => {
+                try {
+                    const date = new Date(entry.time);
+                    const dayKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
+
+                    if (!dayMap[dayKey]) {
+                        dayMap[dayKey] = [];
+                    }
+                    dayMap[dayKey].push(entry.hashrate);
+                } catch (e) {
+                    console.warn('Could not parse date:', entry.time);
+                }
+            });
+
+            // Calculate average for each day
+            const aggregatedData = Object.entries(dayMap).map(([day, hashrates]) => {
+                const validHashrates = hashrates.filter(h => !isNaN(h));
+                const avgHashrate = validHashrates.length > 0 
+                    ? validHashrates.reduce((a, b) => a + b, 0) / validHashrates.length
+                    : 0;
+
+                return {
+                    time: day + 'T12:00:00Z', // Use noon as representative time
+                    hashrate: avgHashrate
+                };
+            });
+
+            return aggregatedData;
         }
 
         function updateStats(data) {
@@ -283,18 +314,25 @@
             document.getElementById('avgHashrate').textContent = avg.toFixed(2);
             document.getElementById('peakHashrate').textContent = peak.toFixed(2);
 
-            // Get the most recent window target
-            const latestWindow = data[data.length - 1].window;
-            if (latestWindow && latestWindow !== '') {
-                // Assuming window target is the block count for the difficulty adjustment window
-                const windowBlocks = parseInt(latestWindow) || parseInt(parseFloat(latestWindow));
-                if (!isNaN(windowBlocks)) {
-                    document.getElementById('windowLength').textContent = windowBlocks.toLocaleString();
-                } else {
-                    document.getElementById('windowLength').textContent = latestWindow;
-                }
+            // Calculate 8-block window time using TIDES algorithm
+            // Time (in seconds) = (8 * difficulty * 2^32) / hashrate
+            const latestEntry = data[data.length - 1];
+            const hashrate = latestEntry.hashrate; // in hashes per second
+            const difficulty = latestEntry.difficulty; // network difficulty
+            
+            if (hashrate && hashrate > 0 && difficulty && difficulty > 0) {
+                // TIDES calculation: time for 8 blocks = (8 * diff * 2^32) / hashrate
+                const timeSeconds = (8 * difficulty * Math.pow(2, 32)) / hashrate;
+                const totalMinutes = Math.round(timeSeconds / 60);
+                const hours = Math.floor(totalMinutes / 60);
+                const minutes = totalMinutes % 60;
+                document.getElementById('windowLength').textContent = `${hours}h ${minutes}m`;
             } else {
-                document.getElementById('windowLength').textContent = '--';
+                // Fallback: 8 blocks * 10 minutes average
+                const estimatedMinutes = 8 * 10;
+                const hours = Math.floor(estimatedMinutes / 60);
+                const minutes = estimatedMinutes % 60;
+                document.getElementById('windowLength').textContent = `${hours}h ${minutes}m`;
             }
 
             const lastTime = data[data.length - 1].time;
