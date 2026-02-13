@@ -97,6 +97,30 @@
             height: 400px;
         }
 
+        .timeframe-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #888;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .timeframe-btn:hover {
+            background: rgba(0, 212, 255, 0.15);
+            border-color: rgba(0, 212, 255, 0.4);
+            color: #00d4ff;
+        }
+
+        .timeframe-btn.active {
+            background: rgba(0, 212, 255, 0.2);
+            border-color: #00d4ff;
+            color: #00d4ff;
+        }
+
         .loading {
             text-align: center;
             padding: 20px;
@@ -189,6 +213,16 @@
         <div class="chart-container">
             <h2>Hashrate History</h2>
             <div id="errorContainer"></div>
+            
+            <div style="margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+                <button class="timeframe-btn active" data-days="7">7D</button>
+                <button class="timeframe-btn" data-days="30">30D</button>
+                <button class="timeframe-btn" data-days="60">60D</button>
+                <button class="timeframe-btn" data-days="90">90D</button>
+                <button class="timeframe-btn" data-days="180">6M</button>
+                <button class="timeframe-btn" data-days="365">1Y</button>
+            </div>
+            
             <div class="chart-wrapper">
                 <div id="loadingIndicator" class="loading">Loading data...</div>
                 <canvas id="hashChart" style="display: none;"></canvas>
@@ -242,6 +276,9 @@
             return rows;
         }
 
+        let fullAggregatedData = [];
+        let currentTimeframeFilter = 7; // Default to 7 days
+
         function parseAndDisplay(csvText) {
             try {
                 const rows = parseCSV(csvText);
@@ -254,15 +291,44 @@
                 calculateTIDESWindow(rows);
                 
                 // Aggregate data to 1 point per day for chart
-                const aggregatedData = aggregateByDay(rows);
+                fullAggregatedData = aggregateByDay(rows);
                 
                 updateStats(rows); // Use original data for stats
-                updateChart(aggregatedData); // Use aggregated data for chart
+                updateChartWithFilter(currentTimeframeFilter); // Use aggregated data for chart
                 updateTimestamp();
+                
+                // Setup timeframe filter buttons
+                setupTimeframeFilters();
             } catch (error) {
                 showError(`Error parsing data: ${error.message}`);
                 console.error('Parse error:', error);
             }
+        }
+
+        function setupTimeframeFilters() {
+            const buttons = document.querySelectorAll('.timeframe-btn');
+            buttons.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    buttons.forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    const days = parseInt(this.dataset.days);
+                    currentTimeframeFilter = days;
+                    updateChartWithFilter(days);
+                });
+            });
+        }
+
+        function updateChartWithFilter(daysBack) {
+            // Filter data to only show the last X days
+            const now = new Date();
+            const cutoffDate = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000);
+            
+            const filteredData = fullAggregatedData.filter(entry => {
+                const entryDate = new Date(entry.time);
+                return entryDate >= cutoffDate;
+            });
+
+            updateChart(filteredData);
         }
 
         function calculateTIDESWindow(rows) {
